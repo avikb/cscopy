@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 func main() {
-	upload := flag.Bool("upload", false, "upload?")
+	upload := flag.Bool("upload", false, "do upload")
 	tname := flag.String("table", "", "table name")
 	fname := flag.String("file", "", "filename")
 	dbhost := flag.String("dbhost", "127.0.0.1", "cassandra host")
@@ -108,7 +109,7 @@ func TableFromRow(row map[string]interface{}) (*Table, []string) {
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	for _, k := range keys {
 		c := Column{Name: k}
-		switch t := row[k].(type) {
+		switch row[k].(type) {
 		case bool:
 			c.Type = "bool"
 		case int:
@@ -119,8 +120,10 @@ func TableFromRow(row map[string]interface{}) (*Table, []string) {
 			c.Type = "float"
 		case time.Time:
 			c.Type = "time"
+		case gocql.UUID:
+			c.Type = "uuid"
 		default:
-			panic(t)
+			panic("unsupported export type: " + reflect.TypeOf(row[k]).String())
 		}
 		*table = append(*table, c)
 	}
@@ -196,7 +199,8 @@ func deserialize(tbl *Table, line []byte) []interface{} {
 	}
 	vals := make([]interface{}, 0, len(arr))
 	for i, v := range arr {
-		switch (*tbl)[i].Type {
+		tp := (*tbl)[i].Type
+		switch tp {
 		case "bool":
 			var x bool
 			if err := json.Unmarshal(v, &x); err != nil {
@@ -227,8 +231,14 @@ func deserialize(tbl *Table, line []byte) []interface{} {
 				panic(err)
 			}
 			vals = append(vals, &x)
+		case "uuid":
+			var x gocql.UUID
+			if err := json.Unmarshal(v, &x); err != nil {
+				panic(err)
+			}
+			vals = append(vals, &x)
 		default:
-			panic((*tbl)[i].Type)
+			panic("unsupported import type: " + tp)
 		}
 	}
 	return vals
