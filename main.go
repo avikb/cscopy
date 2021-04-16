@@ -23,6 +23,7 @@ func main() {
 	dbport := flag.Int("dbport", 9042, "cassandra port")
 	dbuser := flag.String("dbuser", "cassandra", "cassandra username")
 	dbpass := flag.String("dbpass", "cassandra", "cassandra password")
+	batchSize := flag.Int("batch", 100, "batch size")
 	flag.Parse()
 
 	dbsess, err := connect(*dbhost, *dbport, *dbuser, *dbpass)
@@ -42,7 +43,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		uploadTable(dbsess, file, *tname)
+		uploadTable(dbsess, file, *tname, *batchSize)
 	}
 }
 
@@ -158,7 +159,7 @@ func serializeRow(row map[string]interface{}, keys []string) string {
 	return string(data)
 }
 
-func uploadTable(sess *gocql.Session, file io.Reader, tableName string) {
+func uploadTable(sess *gocql.Session, file io.Reader, tableName string, batchSize int) {
 	isHeader := true
 	var tbl *Table
 	var query string
@@ -174,7 +175,7 @@ func uploadTable(sess *gocql.Session, file io.Reader, tableName string) {
 		} else {
 			vals := deserialize(tbl, s.Bytes())
 			batch.Query(query, vals...)
-			if batch.Size() >= 100 {
+			if batch.Size() >= batchSize {
 				if err := sess.ExecuteBatch(batch); err != nil {
 					panic(err)
 				}
